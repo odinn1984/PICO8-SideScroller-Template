@@ -25,7 +25,10 @@ end
 local function gameLoopDraw()
     cls()
 
-    camera(Player:getPosition().x - 64, 0)
+    camera(
+        min(128, max(Player:getPosition().x - 64, 0)),
+        0
+    )
 
     map(0, 0, 0, 0, 32, 16)
 

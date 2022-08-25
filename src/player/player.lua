@@ -1,14 +1,14 @@
 local SPR_IDLE = 64
-local SPR_STEP_1 = 65
-local SPR_STEP_2 = 66
-local SPR_JUMP = 67
+local SPR_STEP = 65
+local SPR_JUMP_1 = 66
+local SPR_JUMP_2 = 67
 local SPR_FALL = 68
 local SPR_INVINCIBLE = 69
 
-local PLAYER_INVINCIBLE = { name = "INVINCIBLE", sprites = { SPR_IDLE, SPR_INVINCIBLE }, interval = 0.15 }
+local PLAYER_INVINCIBLE = { name = "INVINCIBLE", sprites = { SPR_IDLE, SPR_INVINCIBLE }, interval = 0.2 }
 local PLAYER_IDLE = { name = "IDLE", sprites = { SPR_IDLE }, interval = 0 }
-local PLAYER_WALK = { name = "WALK", sprites = { SPR_STEP_1, SPR_STEP_2 }, interval = 0.15 }
-local PLAYER_JUMP = { name = "JUMP", sprites = { SPR_JUMP }, interval = 0 }
+local PLAYER_WALK = { name = "WALK", sprites = { SPR_IDLE, SPR_STEP }, interval = 0.1 }
+local PLAYER_JUMP = { name = "JUMP", sprites = { SPR_JUMP_1, SPR_JUMP_2 }, interval = 0 }
 local PLAYER_FALL = { name = "FALL", sprites = { SPR_FALL }, interval = 0 }
 
 Player = {}
@@ -42,7 +42,7 @@ function Player:init(spawn, direction)
         jumpBufferStart = 0.0,
         jumpBuffer = 0.15,
         jumpRequested = false,
-        stopJumpGravityMultiplier = 3,
+        stopJumpGravityMultiplier = 4,
         canPressJump = true,
         fallSpeed = 2,
         originalGravity = 0.21,
@@ -69,10 +69,10 @@ function Player:init(spawn, direction)
         animStart = 0,
 
         invincible = true,
-        invincibleDuration = 1,
+        invincibleDuration = 2,
         invincibleStart = time(),
 
-        coins = 0,
+        poops = 0,
         points = 0,
     }
 end
@@ -159,9 +159,7 @@ end
 function Player:updateYMovement()
     self.attributes.onGround = CollidingWithCelOnBottom(self.attributes)
 
-    local gravity =
-        abs(self.attributes.v.y) > 0.15 and
-            self.attributes.maxGravity or (self.attributes.maxGravity)
+    local gravity = self.attributes.maxGravity
 
     if self.attributes.v.y > 0 then
         self.attributes.isFalling = true
@@ -179,12 +177,10 @@ function Player:updateYMovement()
 
             CorrectPlayerPosition(self.attributes)
 
-            if self.attributes.jumpRequested and time() - self.attributes.jumpBufferStart < self.attributes.jumpBuffer then
-                self.attributes.v.y = -self.attributes.jumpForce
-                self.attributes.isJumping = true
+            if self:isJumpBuffered() then
+                self:doJump()
             end
 
-            self.attributes.jumpRequested = false
             self.attributes.maxGravity = self.attributes.originalGravity
         end
     elseif self.attributes.v.y < 0 then
@@ -197,12 +193,10 @@ function Player:updateYMovement()
         self.attributes.coyoteTimeStart = 0.0
         self.attributes.onGround = CollidingWithCelOnBottom(self.attributes)
 
-        if self.attributes.jumpRequested and time() - self.attributes.jumpBufferStart < self.attributes.jumpBuffer then
-            self.attributes.v.y = -self.attributes.jumpForce
-            self.attributes.isJumping = true
+        if self:isJumpBuffered() then
+            self:doJump()
         end
 
-        self.attributes.jumpRequested = false
         self.attributes.maxGravity = self.attributes.originalGravity
     end
 
@@ -214,7 +208,7 @@ function Player:updateYMovement()
         )
     end
 
-    if (btn(BUTTON_O) or btn(BUTTON_UP)) then
+    if btn(BUTTON_O) or btn(BUTTON_UP) then
         if self.attributes.canPressJump then
             self.attributes.maxGravity = self.attributes.originalGravity
 
@@ -225,28 +219,12 @@ function Player:updateYMovement()
 
             self.attributes.canPressJump = false
 
-            if
-            (
-                (
-                    not self.attributes.isJumping and
-                    not self.attributes.isFalling
-                )
-                or
-                (
-                    self.attributes.isFalling and
-                    self.attributes.coyoteTimeStart > 0.0 and
-                    time() - self.attributes.coyoteTimeStart < self.attributes.coyoteTime
-                )
-            )
-            then
-                self.attributes.jumpRequested = false
-                self.attributes.v.y = -self.attributes.jumpForce
-                self.attributes.isJumping = true
+            if self:canJump() then
+                self:doJump()
             end
         end
     else
         self.attributes.maxGravity = self.attributes.originalGravity * self.attributes.stopJumpGravityMultiplier
-
         self.attributes.canPressJump = true
     end
 
@@ -264,6 +242,30 @@ function Player:updateYMovement()
     end
 
     self.attributes.prevP.y = self.attributes.p.y
+end
+
+function Player:canJump()
+    return (
+        not self.attributes.isJumping and
+        not self.attributes.isFalling
+    )
+    or
+    (
+        self.attributes.isFalling and
+        self.attributes.coyoteTimeStart > 0.0 and
+        time() - self.attributes.coyoteTimeStart < self.attributes.coyoteTime
+    )
+end
+
+function Player:isJumpBuffered()
+    return
+        self.attributes.jumpRequested and time() - self.attributes.jumpBufferStart < self.attributes.jumpBuffer
+end
+
+function Player:doJump()
+    self.attributes.jumpRequested = false
+    self.attributes.v.y = -self.attributes.jumpForce
+    self.attributes.isJumping = true
 end
 
 function Player:updateAnimState()
@@ -352,12 +354,12 @@ function Player:respawn()
     self.attributes.direction = DIRECTION_RIGHT
 end
 
-function Player:incrementCoins(val)
+function Player:incrementPoops(val)
     if val > 0 then
-        self.attributes.coins = self.attributes.coins + val
+        self.attributes.poops = self.attributes.poops + val
 
-        if self.attributes.coins >= 100 then
-            self.attributes.coins = 0
+        if self.attributes.poops >= 100 then
+            self.attributes.poops = 0
             self.attributes.currentLives = self.attributes.currentLives + 1
         end
     end

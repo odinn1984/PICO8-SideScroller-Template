@@ -17,9 +17,9 @@ function CreatePikcup()
 end
 
 function DrawPickups()
-    DrawAllCoins()
+    DrawAllPoops()
 end
 
 function UpdatePickups()
-    UpdateAllCoins()
+    UpdateAllPoops()
 end
