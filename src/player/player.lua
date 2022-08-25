@@ -10,6 +10,7 @@ local PLAYER_IDLE = { name = "IDLE", sprites = { SPR_IDLE }, interval = 0 }
 local PLAYER_WALK = { name = "WALK", sprites = { SPR_IDLE, SPR_STEP }, interval = 0.1 }
 local PLAYER_JUMP = { name = "JUMP", sprites = { SPR_JUMP_1, SPR_JUMP_2 }, interval = 0 }
 local PLAYER_FALL = { name = "FALL", sprites = { SPR_FALL }, interval = 0 }
+local PLAYER_DASH = { name = "DASH", sprites = { SPR_STEP, SPR_JUMP_1 }, interval = 0.05 }
 
 Player = {}
 
@@ -48,6 +49,13 @@ function Player:init(spawn, direction)
         originalGravity = 0.21,
         maxGravity = 0.21,
 
+        dashDuration = 0.1125,
+        dashSpeed = 4,
+        canPressDash = true,
+        dashStartTime = time(),
+        dashCooldownStartTime = time(),
+        dashCooldown = 0.3,
+
         w = 8,
         h = 8,
 
@@ -60,16 +68,18 @@ function Player:init(spawn, direction)
 
         isJumping = false,
         isFalling = false,
+        isDashing = false,
         onGround = false,
         canMove = false,
 
         direction = direction,
+        originalDirection = direction,
         currentSprite = PLAYER_IDLE.sprites[1],
         animState = PLAYER_IDLE,
         animStart = 0,
 
         invincible = true,
-        invincibleDuration = 2,
+        invincibleDuration = 1,
         invincibleStart = time(),
 
         poops = 0,
@@ -134,14 +144,33 @@ function Player:update()
 end
 
 function Player:updateXMovement()
-    if btn(BUTTON_RIGHT) and not btn(BUTTON_LEFT) then
-        self.attributes.direction = DIRECTION_RIGHT
-        self.attributes.v.x = self.attributes.maxSpeed
-    elseif btn(BUTTON_LEFT) and not btn(BUTTON_RIGHT) then
-        self.attributes.direction = DIRECTION_LEFT
-        self.attributes.v.x = -self.attributes.maxSpeed
+    if not self.attributes.isDashing then
+        if btn(BUTTON_RIGHT) and not btn(BUTTON_LEFT) then
+            self.attributes.direction = DIRECTION_RIGHT
+            self.attributes.v.x = self.attributes.maxSpeed
+        elseif btn(BUTTON_LEFT) and not btn(BUTTON_RIGHT) then
+            self.attributes.direction = DIRECTION_LEFT
+            self.attributes.v.x = -self.attributes.maxSpeed
+        else
+            self.attributes.v.x = 0
+        end
+    end
+
+    if self:finishedDash() then
+        self.attributes.isDashing = false
+        self.attributes.dashCooldownStartTime = time()
+    end
+
+    if btn(BUTTON_X) then
+        if self.attributes.canPressDash then
+            self.attributes.canPressDash = false
+
+            if self:canDash() then
+                self:doDash()
+            end
+        end
     else
-        self.attributes.v.x = 0
+        self.attributes.canPressDash = true
     end
 
     self.attributes.p.x = self.attributes.p.x + self.attributes.v.x
@@ -156,10 +185,29 @@ function Player:updateXMovement()
     self.attributes.prevP.x = self.attributes.p.x
 end
 
+function Player:canDash()
+    return
+        self.attributes.canMove and
+        not self.attributes.isDashing and
+        time() - self.attributes.dashCooldownStartTime > self.attributes.dashCooldown
+end
+
+function Player:doDash()
+    self.attributes.dashStartTime = time()
+    self.attributes.v.x = self.attributes.direction * self.attributes.dashSpeed
+    self.attributes.isDashing = true
+end
+
+function Player:finishedDash()
+    return
+        self.attributes.isDashing and
+        time() - self.attributes.dashStartTime >= self.attributes.dashDuration
+end
+
 function Player:updateYMovement()
     self.attributes.onGround = CollidingWithCelOnBottom(self.attributes)
 
-    local gravity = self.attributes.maxGravity
+    local gravity = self.attributes.isDashing and 0.0 or self.attributes.maxGravity
 
     if self.attributes.v.y > 0 then
         self.attributes.isFalling = true
@@ -200,12 +248,14 @@ function Player:updateYMovement()
         self.attributes.maxGravity = self.attributes.originalGravity
     end
 
-    if not self.attributes.onGround then
+    if not self.attributes.onGround and not self.attributes.isDashing then
         self.attributes.v.y = Approach(
             self.attributes.v.y,
             self.attributes.fallSpeed,
             gravity
         )
+    elseif self.attributes.isDashing then
+        self.attributes.v.y = 0
     end
 
     if btn(BUTTON_O) or btn(BUTTON_UP) then
@@ -281,6 +331,8 @@ function Player:updateAnimState()
             newAnimState = PLAYER_FALL
         elseif self.attributes.v.y < 0 then
             newAnimState = PLAYER_JUMP
+        elseif self.attributes.isDashing then
+            newAnimState = PLAYER_DASH
         end
     end
 
@@ -344,6 +396,9 @@ function Player:respawn()
     self.attributes.invincible = true
     self.attributes.invincibleStart = time()
     self.attributes.canMove = false
+    self.attributes.isJumping = false
+    self.attributes.isDashing = false
+    self.attributes.isFalling = false
 
     self.attributes.p.x = self.attributes.spawn.x
     self.attributes.p.y = self.attributes.spawn.y
@@ -351,7 +406,7 @@ function Player:respawn()
     self.attributes.v.y = 0
     self.attributes.prevP.x = self.attributes.spawn.x
     self.attributes.prevP.y = self.attributes.spawn.y
-    self.attributes.direction = DIRECTION_RIGHT
+    self.attributes.direction = self.attributes.originalDirection
 end
 
 function Player:incrementPoops(val)
